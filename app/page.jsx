@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_PREDICT_URL || "/api/predict";
+const API_URL = "/api/predict";
 
 export default function Home() {
   const [selectedFile, setSelectedFile] = useState(null);
