@@ -110,7 +110,7 @@ export default function Home() {
         <h1>
           Mango Leaf <span>Classifier</span>
         </h1>
-        <p className="subtitle">SVM-powered leaf health detection</p>
+        <p className="subtitle">SVM-Powered Leaf Health Detection</p>
       </header>
 
       <div className="card">
@@ -210,7 +210,7 @@ export default function Home() {
         </div>
       </div>
 
-      <footer>Mango Leaf Health Classifier · Powered by SVM + Flask</footer>
+      <footer>Mango Leaf Health Classifier · By BSCPE 4-1 Group 4</footer>
     </div>
   );
 }
