@@ -1,12 +1,15 @@
-from flask import Flask, request, jsonify
-import joblib
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import cgi
+import io
+import json
+import os
 import pickle
+import urllib.parse
+
+import joblib
 import numpy as np
 from PIL import Image
-import os
-import io
-
-app = Flask(__name__)
+ 
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -51,6 +54,7 @@ if MODEL_PATH is not None:
             model = pickle.load(model_file)
 
 IMAGE_SIZE = (50, 50)
+ALLOWED_PATHS = {"/", "/api/predict", "/predict"}
 
 
 def _get_resample():
@@ -66,54 +70,132 @@ def extract_features(image):
     return features
 
 
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "modelLoaded": model is not None})
+def _json_bytes(payload):
+    return json.dumps(payload).encode("utf-8")
 
 
-@app.route("/", methods=["POST"])
-def predict():
+def _extract_file_from_form(form):
+    for field_name in ("image", "file"):
+        if field_name not in form:
+            continue
+        field = form[field_name]
+        if isinstance(field, list):
+            field = field[0] if field else None
+        if field is not None and getattr(field, "file", None) is not None:
+            return field
+    return None
+
+
+def _predict_from_bytes(image_bytes):
     if model is None:
-        return jsonify({"error": "Model not loaded. Check your model file."}), 500
+        return {"error": "Model not loaded. Check your model file."}, 500
 
-    file = request.files.get("image") or request.files.get("file")
-    if file is None:
-        return jsonify({"error": "No image uploaded. Use form field 'image' or 'file'."}), 400
+    image = Image.open(io.BytesIO(image_bytes))
+    features = extract_features(image)
+    features = np.asarray(features).reshape(1, -1)
+    prediction = model.predict(features)[0]
 
-    if file.filename == "":
-        return jsonify({"error": "No file selected."}), 400
+    confidence = None
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(features)[0]
+        confidence = round(float(max(proba)) * 100, 2)
+    elif hasattr(model, "decision_function"):
+        score = model.decision_function(features)[0]
+        confidence = round(min(abs(float(score)) * 10, 100), 2)
+
+    label_map = {
+        0: "Healthy",
+        1: "Unhealthy",
+        "dead": "Unhealthy",
+        "alive": "Healthy",
+        "healthy": "Healthy",
+        "unhealthy": "Unhealthy",
+    }
 
     try:
-        image_bytes = file.read()
-        image = Image.open(io.BytesIO(image_bytes))
-        features = extract_features(image)
-        features = np.asarray(features).reshape(1, -1)
-        prediction = model.predict(features)[0]
+        numeric = int(prediction)
+        result = label_map.get(numeric, str(prediction))
+    except Exception:
+        result = label_map.get(str(prediction).lower(), str(prediction))
 
-        confidence = None
-        if hasattr(model, "predict_proba"):
-            proba = model.predict_proba(features)[0]
-            confidence = round(float(max(proba)) * 100, 2)
-        elif hasattr(model, "decision_function"):
-            score = model.decision_function(features)[0]
-            confidence = round(min(abs(float(score)) * 10, 100), 2)
+    return {"result": result, "confidence": confidence}, 200
 
-        label_map = {
-            0: "Healthy",
-            1: "Unhealthy",
-            "dead": "Unhealthy",
-            "alive": "Healthy",
-            "healthy": "Healthy",
-            "unhealthy": "Unhealthy"
-        }
+
+class handler(BaseHTTPRequestHandler):
+    def _send_json(self, status_code, payload):
+        body = _json_bytes(payload)
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+        if status_code != 204:
+            self.wfile.write(body)
+
+    def _read_body(self):
+        length = int(self.headers.get("content-length", "0"))
+        return self.rfile.read(length) if length > 0 else b""
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_GET(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ALLOWED_PATHS:
+            self._send_json(404, {"error": "Not found"})
+            return
+
+        self._send_json(200, {"status": "ok", "modelLoaded": model is not None})
+
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ALLOWED_PATHS:
+            self._send_json(404, {"error": "Not found"})
+            return
+
+        content_type = self.headers.get("content-type", "")
+        if "multipart/form-data" not in content_type:
+            self._send_json(400, {"error": "Expected multipart/form-data with an image field."})
+            return
+
+        form = cgi.FieldStorage(
+            fp=io.BytesIO(self._read_body()),
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+            keep_blank_values=True,
+        )
+
+        file_field = _extract_file_from_form(form)
+        if file_field is None:
+            self._send_json(400, {"error": "No image uploaded. Use form field 'image' or 'file'."})
+            return
+
+        filename = getattr(file_field, "filename", "") or ""
+        if filename == "":
+            self._send_json(400, {"error": "No file selected."})
+            return
 
         try:
-            numeric = int(prediction)
-            result = label_map.get(numeric, str(prediction))
-        except Exception:
-            result = label_map.get(str(prediction).lower(), str(prediction))
+            image_bytes = file_field.file.read()
+            payload, status_code = _predict_from_bytes(image_bytes)
+            self._send_json(status_code, payload)
+        except Exception as error:
+            self._send_json(500, {"error": f"Prediction failed: {str(error)}"})
 
-        return jsonify({"result": result, "confidence": confidence})
+    def log_message(self, format, *args):
+        return
 
-    except Exception as error:
-        return jsonify({"error": f"Prediction failed: {str(error)}"}), 500
+
+if __name__ == "__main__":
+    server = HTTPServer(("127.0.0.1", 5000), handler)
+    print("Serving predict endpoint on http://127.0.0.1:5000/api/predict")
+    server.serve_forever()
