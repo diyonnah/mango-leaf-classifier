@@ -1,5 +1,15 @@
 export const runtime = "nodejs";
 
+function resolveBackendEndpoint(rawUrl) {
+  const endpoint = new URL(rawUrl);
+
+  if (!endpoint.pathname || endpoint.pathname === "/") {
+    endpoint.pathname = "/predict";
+  }
+
+  return endpoint.toString();
+}
+
 async function forwardPrediction(request) {
   const backendUrl =
     process.env.PREDICT_API_URL || process.env.NEXT_PUBLIC_PREDICT_URL;
@@ -27,7 +37,7 @@ async function forwardPrediction(request) {
   const proxyFormData = new FormData();
   proxyFormData.append("image", image);
 
-  const response = await fetch(backendUrl, {
+  const response = await fetch(resolveBackendEndpoint(backendUrl), {
     method: "POST",
     body: proxyFormData
   });
