@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Mango Leaf Classifier</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green-deep:   #1a3a1f;
+      --green-mid:    #2d6a35;
+      --green-light:  #4caf64;
+      --gold:         #c8a84b;
+      --cream:        #f5f0e8;
+      --brown-warm:   #5c3d1e;
+      --red-dead:     #c0392b;
+      --white:        #ffffff;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background-color: var(--green-deep);
+      color: var(--cream);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(76,175,100,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(200,168,75,0.06) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 60px 24px 80px;
+    }
+
+    /* Header */
+    header {
+      text-align: center;
+      margin-bottom: 56px;
+      animation: fadeDown 0.8s ease both;
+    }
+
+    .leaf-icon {
+      font-size: 48px;
+      display: block;
+      margin-bottom: 16px;
+      filter: drop-shadow(0 4px 12px rgba(76,175,100,0.4));
+    }
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 5vw, 3rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+      color: var(--cream);
+    }
+
+    h1 span {
+      color: var(--green-light);
+    }
+
+    .subtitle {
+      margin-top: 12px;
+      font-size: 0.95rem;
+      font-weight: 300;
+      color: rgba(245,240,232,0.6);
+      letter-spacing: 0.5px;
+    }
+
+    /* Card */
+    .card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 24px;
+      padding: 40px;
+      backdrop-filter: blur(12px);
+      animation: fadeUp 0.8s 0.2s ease both;
+    }
+
+    /* Upload Zone */
+    .upload-zone {
+      border: 2px dashed rgba(76,175,100,0.4);
+      border-radius: 16px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+      background: rgba(76,175,100,0.03);
+    }
+
+    .upload-zone:hover, .upload-zone.dragover {
+      border-color: var(--green-light);
+      background: rgba(76,175,100,0.08);
+      transform: translateY(-2px);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .upload-title {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--cream);
+      margin-bottom: 6px;
+    }
+
+    .upload-hint {
+      font-size: 0.82rem;
+      color: rgba(245,240,232,0.45);
+    }
+
+    /* Preview */
+    #preview-wrap {
+      display: none;
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    #preview-wrap img {
+      max-height: 240px;
+      max-width: 100%;
+      border-radius: 12px;
+      border: 2px solid rgba(76,175,100,0.3);
+      object-fit: contain;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .preview-name {
+      margin-top: 10px;
+      font-size: 0.82rem;
+      color: rgba(245,240,232,0.5);
+    }
+
+    /* Button */
+    .btn {
+      display: block;
+      width: 100%;
+      margin-top: 28px;
+      padding: 16px;
+      background: linear-gradient(135deg, var(--green-mid), var(--green-light));
+      color: white;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(45,106,53,0.4);
+    }
+
+    .btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(45,106,53,0.5);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn.loading {
+      background: linear-gradient(135deg, #2a5530, #3d8a50);
+    }
+
+    /* Result */
+    #result-wrap {
+      display: none;
+      margin-top: 28px;
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    #result-wrap.alive {
+      background: rgba(76,175,100,0.12);
+      border: 1px solid rgba(76,175,100,0.3);
+    }
+
+    #result-wrap.dead {
+      background: rgba(192,57,43,0.12);
+      border: 1px solid rgba(192,57,43,0.3);
+    }
+
+    #result-wrap.error {
+      background: rgba(200,168,75,0.1);
+      border: 1px solid rgba(200,168,75,0.3);
+    }
+
+    .result-emoji {
+      font-size: 48px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .result-label {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .alive .result-label  { color: var(--green-light); }
+    .dead .result-label   { color: #e74c3c; }
+    .error .result-label  { color: var(--gold); }
+
+    .result-desc {
+      font-size: 0.9rem;
+      color: rgba(245,240,232,0.6);
+      margin-bottom: 12px;
+    }
+
+    .confidence-bar-wrap {
+      margin-top: 16px;
+    }
+
+    .confidence-label {
+      font-size: 0.8rem;
+      color: rgba(245,240,232,0.5);
+      margin-bottom: 6px;
+    }
+
+    .confidence-bar {
+      height: 6px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      border-radius: 99px;
+      transition: width 1s ease;
+      width: 0%;
+    }
+
+    .alive .confidence-fill  { background: var(--green-light); }
+    .dead .confidence-fill   { background: #e74c3c; }
+
+    /* Divider */
+    .divider {
+      margin: 36px 0;
+      border: none;
+      border-top: 1px solid rgba(255,255,255,0.07);
+    }
+
+    .how-title {
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: rgba(245,240,232,0.35);
+      margin-bottom: 16px;
+    }
+
+    .steps {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .step {
+      flex: 1;
+      min-width: 140px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .step-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      color: var(--green-light);
+      opacity: 0.6;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .step-text {
+      font-size: 0.82rem;
+      color: rgba(245,240,232,0.55);
+      line-height: 1.4;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 40px;
+      font-size: 0.78rem;
+      color: rgba(245,240,232,0.25);
+      animation: fadeUp 0.8s 0.4s ease both;
+    }
+
+    /* Animations */
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <span class="leaf-icon">🍃</span>
+      <h1>Mango Leaf <span>Classifier</span></h1>
+      <p class="subtitle">SVM-powered leaf health detection</p>
+    </header>
+
+    <div class="card">
+
+      <!-- Upload Zone -->
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept="image/*" />
+        <span class="upload-icon">📁</span>
+        <p class="upload-title">Drop a leaf image here</p>
+        <p class="upload-hint">or click to browse — JPG, PNG supported</p>
+      </div>
+
+      <!-- Image Preview -->
+      <div id="preview-wrap">
+        <img id="preview-img" src="" alt="Preview" />
+        <p class="preview-name" id="preview-name"></p>
+      </div>
+
+      <!-- Classify Button -->
+      <button class="btn" id="classify-btn" disabled>Classify Leaf</button>
+
+      <!-- Result -->
+      <div id="result-wrap">
+        <span class="result-emoji" id="result-emoji"></span>
+        <div class="result-label" id="result-label"></div>
+        <div class="result-desc" id="result-desc"></div>
+        <div class="confidence-bar-wrap" id="confidence-wrap" style="display:none">
+          <div class="confidence-label" id="confidence-label"></div>
+          <div class="confidence-bar">
+            <div class="confidence-fill" id="confidence-fill"></div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="divider" />
+
+      <div class="how-title">How it works</div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">01</div>
+          <div class="step-text">Upload a photo of a mango leaf</div>
+        </div>
+        <div class="step">
+          <div class="step-num">02</div>
+          <div class="step-text">SVM model analyzes the image features</div>
+        </div>
+        <div class="step">
+          <div class="step-num">03</div>
+          <div class="step-text">Get instant Healthy or Unhealthy prediction</div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer>Mango Leaf Health Classifier &nbsp;·&nbsp; Powered by SVM + Flask</footer>
+  </div>
+
+  <script>
+    const fileInput   = document.getElementById('file-input');
+    const uploadZone  = document.getElementById('upload-zone');
+    const previewWrap = document.getElementById('preview-wrap');
+    const previewImg  = document.getElementById('preview-img');
+    const previewName = document.getElementById('preview-name');
+    const classifyBtn = document.getElementById('classify-btn');
+    const resultWrap  = document.getElementById('result-wrap');
+
+    let selectedFile = null;
+
+    // Drag and drop
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) handleFile(file);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    function handleFile(file) {
+      selectedFile = file;
+      const reader = new FileReader();
+      reader.onload = e => {
+        previewImg.src = e.target.result;
+        previewName.textContent = file.name;
+        previewWrap.style.display = 'block';
+        classifyBtn.disabled = false;
+        resultWrap.style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    classifyBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      // Loading state
+      classifyBtn.disabled = true;
+      classifyBtn.innerHTML = '<span class="spinner"></span> Analyzing...';
+      classifyBtn.classList.add('loading');
+      resultWrap.style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('image', selectedFile);
+
+      try {
+        const response = await fetch('/api/predict', { method: 'POST', body: formData });
+        const data = await response.json();
+
+      if (data.error) {
+        showResult('error', '⚠️', 'Error', data.error, null);
+      } else {
+        const lowerResult = (data.result || '').toLowerCase();
+        const isHealthy = lowerResult === 'healthy';
+        showResult(
+          isHealthy ? 'alive' : 'dead',
+          isHealthy ? '🌿' : '🍂',
+          data.result,
+          isHealthy ? 'The leaf appears healthy.' : 'The leaf appears unhealthy or diseased.',
+          data.confidence
+        );
+      }
+      } catch (err) {
+        showResult('error', '⚠️', 'Connection Error', 'Could not reach the server. Is Flask running?', null);
+      }
+
+      // Reset button
+      classifyBtn.disabled = false;
+      classifyBtn.innerHTML = 'Classify Leaf';
+      classifyBtn.classList.remove('loading');
+    });
+
+    function showResult(type, emoji, label, desc, confidence) {
+      resultWrap.className = type;
+      resultWrap.style.display = 'block';
+      document.getElementById('result-emoji').textContent = emoji;
+      document.getElementById('result-label').textContent = label;
+      document.getElementById('result-desc').textContent = desc;
+
+      const confWrap = document.getElementById('confidence-wrap');
+      if (confidence !== null && confidence !== undefined) {
+        confWrap.style.display = 'block';
+        document.getElementById('confidence-label').textContent = `Confidence: ${confidence}%`;
+        setTimeout(() => {
+          document.getElementById('confidence-fill').style.width = confidence + '%';
+        }, 100);
+      } else {
+        confWrap.style.display = 'none';
+      }
+
+      resultWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  </script>
+</body>
+</html>
