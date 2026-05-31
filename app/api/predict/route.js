@@ -1,13 +1,15 @@
 export const runtime = "nodejs";
 
-function resolveBackendEndpoint(rawUrl) {
-  const endpoint = new URL(rawUrl);
+function buildBackendCandidates(rawUrl) {
+  const base = new URL(rawUrl);
+  const paths = [base.pathname || "/", "/predict", "/api/predict"];
+  const uniquePaths = [...new Set(paths)];
 
-  if (!endpoint.pathname || endpoint.pathname === "/") {
-    endpoint.pathname = "/predict";
-  }
-
-  return endpoint.toString();
+  return uniquePaths.map((pathname) => {
+    const candidate = new URL(base.toString());
+    candidate.pathname = pathname;
+    return candidate.toString();
+  });
 }
 
 async function forwardPrediction(request) {
@@ -37,17 +39,41 @@ async function forwardPrediction(request) {
   const proxyFormData = new FormData();
   proxyFormData.append("image", image);
 
-  const response = await fetch(resolveBackendEndpoint(backendUrl), {
-    method: "POST",
-    body: proxyFormData
-  });
+  let lastPayload = null;
+  let lastStatus = 502;
 
-  const contentType = response.headers.get("content-type") || "";
-  const payload = contentType.includes("application/json")
-    ? await response.json()
-    : { error: await response.text() };
+  for (const candidateUrl of buildBackendCandidates(backendUrl)) {
+    const response = await fetch(candidateUrl, {
+      method: "POST",
+      body: proxyFormData
+    });
 
-  return Response.json(payload, { status: response.status });
+    const contentType = response.headers.get("content-type") || "";
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : { error: await response.text() };
+
+    lastPayload = payload;
+    lastStatus = response.status;
+
+    if (response.ok && !payload?.error) {
+      return Response.json(payload, { status: response.status });
+    }
+
+    if (response.status !== 404) {
+      return Response.json(payload, { status: response.status });
+    }
+  }
+
+  return Response.json(
+    {
+      error:
+        lastPayload?.error ||
+        "Prediction backend returned 404 on all tried endpoints.",
+      tried: buildBackendCandidates(backendUrl)
+    },
+    { status: lastStatus }
+  );
 }
 
 export async function POST(request) {
