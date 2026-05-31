@@ -57,7 +57,14 @@ export default function Home() {
 
     try {
       const response = await fetch(API_URL, { method: "POST", body: formData });
-      const data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await response.json()
+        : { error: await response.text() };
+
+      if (!response.ok && !data.error) {
+        data.error = `Request failed with status ${response.status}`;
+      }
 
       if (data.error) {
         setResult({
@@ -85,7 +92,7 @@ export default function Home() {
         type: "error",
         emoji: "⚠️",
         label: "Connection Error",
-        desc: "Could not reach the server. Is the API running?",
+        desc: `Could not reach the server. ${error?.message || "Is the API running?"}`,
         confidence: null
       });
     } finally {
